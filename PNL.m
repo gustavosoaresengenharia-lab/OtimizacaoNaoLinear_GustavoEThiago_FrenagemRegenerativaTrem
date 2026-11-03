@@ -5,10 +5,10 @@
 clear; clc; close all;
 
 %% 1. PARÂMETROS DO SISTEMA (TREM CARREGADO - CASO A)
-M_prime = 6492000;    % Massa efetiva do trem [kg]
+M_prime = 37482000;    % Massa efetiva do trem [kg] 37482000 (carregado) / 6492000 (vazio)
 a_br_max = 0.3;        % Taxa máxima de desaceleração [m/s^2]
 D_total = 2000;        % Distância total de frenagem [m]
-v_ini = 30/3.6;            % Velocidade inicial [m/s]
+v_ini = 11.11;        % Velocidade inicial [m/s] 22.22 / 11.11
 v_final = 0;           % Velocidade final [m/s]
 
 % Coeficientes de Davis (Resistência ao avanço)
@@ -30,14 +30,12 @@ y0 = linspace(y_ini, y_final, N)';
 lb = zeros(N, 1);
 lb(1) = y_ini;          % Condição de contorno inicial fixa
 lb(N) = y_final;        % Condição de contorno final fixa
-
 ub = y_ini * ones(N, 1);
 ub(1) = y_ini;
 ub(N) = y_final;
 
 %% 3. EXECUÇÃO DO SOLVER fmincon
 fun_obj = @(y) obj_frenagem_pnl(y, N, ds, M_prime, A_dav, B_dav, C_dav);
-
 options = optimoptions('fmincon', ...
     'Algorithm', 'sqp', ...
     'MaxFunctionEvaluations', 50000, ...
@@ -52,15 +50,19 @@ tic;
     fun_obj, y0, [], [], [], [], lb, ub, ...
     @(y) nonlcon_frenagem_pnl(y, N, ds, M_prime, a_br_max, A_dav, B_dav, C_dav), ...
     options);
-t_exec = toc;
+t_exec_solver = toc;
 
 %% 4. PÓS-PROCESSAMENTO E EXIBIÇÃO DE RESULTADOS
 v_opt = sqrt(max(0, y_opt)); 
-
 v_avg = sqrt((y_opt(1:N-1) + y_opt(2:N)) / 2);
+
+% --- CÁLCULO DO TEMPO DE FRENAGEM ---
+dt = ds ./ v_avg;                 % Intervalo de tempo em cada passo ds [s]
+tempo_frenagem = sum(dt);         % Tempo total até a imobilização [s]
+% ------------------------------------
+
 F_d_avg = A_dav + B_dav * v_avg + C_dav * (v_avg.^2);
 F_total = M_prime * (y_opt(1:N-1) - y_opt(2:N)) / (2 * ds);
-
 F_disponivel = max(0, F_total - F_d_avg);
 F_e_max = max(200000, 1400000 - 15000 * v_avg);
 F_e_opt = min(F_disponivel, F_e_max);
@@ -75,7 +77,8 @@ disp('==================================================');
 disp('      RESULTADOS DA OTIMIZAÇÃO NÃO LINEAR (PNL)   ');
 disp('==================================================');
 disp(['Exitflag: ', num2str(exitflag)]);
-disp(['Tempo de Execução: ', num2str(t_exec, '%.4f'), ' s']);
+disp(['Tempo de Execução do Solver: ', num2str(t_exec_solver, '%.4f'), ' s']);
+disp(['Tempo Total de Frenagem do Trem: ', num2str(tempo_frenagem, '%.2f'), ' s (', num2str(tempo_frenagem/60, '%.2f'), ' min)']);
 disp(['Energia Cinética Inicial: ', num2str(E_cinetica_ini_kwh, '%.2f'), ' kWh']);
 disp(['Energia Elétrica Regenerada: ', num2str(E_regenerada_kwh, '%.2f'), ' kWh']);
 disp(['Taxa de Recuperação: ', num2str(taxa_recuperacao, '%.2f'), ' %']);
